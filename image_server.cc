@@ -5,6 +5,8 @@
 #include "httplib.h"
 #include <time.h>
 #include <assert.h>
+#include <openssl/md5.h>
+#include <string>
 
 class FileUtil 
 {
@@ -43,6 +45,7 @@ public:
 };
 
 MYSQL* mysql = NULL;
+std::string StringMD5(const std::string& str);
 
 int main()
 {
@@ -85,8 +88,8 @@ int main()
             }
             // 2、根据与文件名获取到文件数据file对象
             const auto& file = req.get_file_value("upload"); 
-            // file.filename;
-            // file.content_type;
+            // body是图片的内容
+            const std::string image_body = req.body.substr(file.offset,file.length);
             // 3、把图片属性信息插入到数据库中
             Json::Value image;
             time_t t = time(0);
@@ -97,7 +100,7 @@ int main()
             image["upload_time"] = ch;
             image["type"] = file.content_type;
             image["path"] = "./wwwimage/" + file.filename;
-            image["md5"] = "aaaaaa";
+            image["md5"] = StringMD5(image_body);
             ret = image_table.Insert(image);
             if(!ret)
             {
@@ -108,15 +111,11 @@ int main()
                 resp.set_content(writer.write(resp_json),"application/json");
                 return;
             }
-            // 4、把图片保存到指定的磁盘目录中
-            // body是图片的内容
-            
-            auto body = req.body.substr(file.offset,file.length);
-            FileUtil::Write(image["path"].asString(),body);
+            // 4、把图片保存到指定的磁盘目录中           
+            FileUtil::Write(image["path"].asString(),image_body);
             // 5、构造一个响应数据通知客户端上传成功 
             resp_json["ok"] = true;
             resp.status = 200;
-            //resp.set_content("hello","text/html");
             resp.set_content(writer.write(resp_json),"application/json");
             return;
             });
@@ -255,4 +254,20 @@ int main()
     server.set_base_dir("./wwwimage");
     server.listen("192.168.10.133",9000);
     return 0;
+}
+
+std::string StringMD5(const std::string& str)
+{
+    const int md5_length=16;
+    unsigned char MD5result[md5_length];
+    // 使用OpenSSL函数计算MD5
+      MD5((const unsigned char*)str.c_str(),str.size(),MD5result);
+    // 转换成字符串方便查看
+    char out[1024] = {0};
+    int off = 0;
+    for(int i = 0;i < md5_length; ++i)
+    {
+       off += sprintf(out + off,"%x",MD5result[i]);
+    }
+    return std::string(out);
 }
